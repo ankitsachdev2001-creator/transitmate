@@ -1,0 +1,12 @@
+flask
+flask-cors
+gunicorn
+pymongo
+scikit-learn
+SpeechRecognition
+transformers
+torch
+torchaudio
+pydub
+requests
+numpy

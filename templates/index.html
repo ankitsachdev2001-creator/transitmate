@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>TransitMate</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+
+  <style>
+    body {
+      font-family: 'Poppins', sans-serif;
+      background: radial-gradient(circle at 10% 20%, #ffffff 0%, #f0f4ff 100%);
+      color: #1f2937;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    .modal {
+      position: fixed;
+      inset: 0;
+      background-color: rgba(0, 0, 0, 0.6);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+    .modal.show { display: flex; opacity: 1; }
+    .modal-content {
+      background: #fff;
+      border-radius: 1rem;
+      padding: 1.5rem;
+      width: 90%;
+      max-width: 400px;
+      box-shadow: 0 15px 35px rgba(0,0,0,0.3);
+      position: relative;
+    }
+    .close-btn {
+      position: absolute;
+      top: 10px;
+      right: 15px;
+      font-size: 1.5rem;
+      cursor: pointer;
+      color: #9ca3af;
+    }
+
+    .admin-panel {
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: 100%;
+      max-width: 550px;
+      height: 100%;
+      background-color: #fcfcfd;
+      z-index: 900;
+      transform: translateX(100%);
+      transition: transform 0.3s ease-in-out;
+      box-shadow: -6px 0 15px rgba(0,0,0,0.15);
+      padding: 1.5rem;
+      overflow-y: auto;
+    }
+    .admin-panel.open { transform: translateX(0); }
+
+    @media (max-width: 768px) {
+      main { padding: 1rem !important; }
+      .flex.items-center.space-x-4.mb-8 { flex-direction: column; gap: 0.75rem; }
+      .grid.grid-cols-2.sm\:grid-cols-3.lg\:grid-cols-5.gap-3.mb-10 { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+
+<body class="p-4 sm:p-6">
+  <div class="container mx-auto">
+    <header class="text-center mb-8">
+      <h1 class="text-3xl sm:text-4xl font-extrabold text-indigo-600">Transit<span class="text-gray-700">Mate</span></h1>
+      <p class="text-gray-500 mt-2 text-base sm:text-lg">Your Voice-Powered Public Transport Assistant</p>
+    </header>
+
+    <main class="bg-white p-4 sm:p-6 rounded-2xl shadow-xl">
+      <div class="flex flex-col sm:flex-row items-stretch sm:items-center sm:space-x-3 space-y-3 sm:space-y-0 mb-6">
+        <input id="query-input" type="text" placeholder="Ask about stations, routes, or fares..." class="flex-grow p-3 border rounded-xl focus:ring-2 focus:ring-indigo-300 text-base shadow-sm" />
+        <div class="flex gap-2 sm:gap-3">
+          <button id="submit-btn" class="bg-indigo-600 text-white font-semibold px-4 py-3 rounded-xl hover:bg-indigo-700 shadow-md">Submit</button>
+          <button id="voice-btn" class="bg-emerald-500 text-white font-semibold px-3 py-3 rounded-xl hover:bg-emerald-600 shadow-md">🎙️</button>
+          <button id="mute-btn" class="bg-gray-300 text-gray-700 font-semibold px-3 py-3 rounded-xl hover:bg-gray-400 shadow-md">🔇</button>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-10">
+        <div id="track-btn" class="text-center p-3 bg-indigo-50 rounded-xl border border-indigo-200 cursor-pointer hover:shadow-md">
+          <span class="text-2xl">🚌</span><p class="font-medium text-indigo-700 text-sm mt-1">Track Bus</p>
+        </div>
+        <div id="fare-btn" class="text-center p-3 bg-indigo-50 rounded-xl border border-indigo-200 cursor-pointer hover:shadow-md">
+          <span class="text-2xl">💰</span><p class="font-medium text-indigo-700 text-sm mt-1">Calc Fare</p>
+        </div>
+        <div id="all-routes-btn" class="text-center p-3 bg-indigo-50 rounded-xl border border-indigo-200 cursor-pointer hover:shadow-md">
+          <span class="text-2xl">🗺️</span><p class="font-medium text-indigo-700 text-sm mt-1">All Routes</p>
+        </div>
+        <div id="admin-btn" class="text-center p-3 bg-indigo-50 rounded-xl border border-indigo-200 cursor-pointer hover:shadow-md">
+          <span class="text-2xl">⚙️</span><p class="font-medium text-indigo-700 text-sm mt-1">Admin Panel</p>
+        </div>
+        <div onclick="postQuery('show all stations')" class="text-center p-3 bg-indigo-50 rounded-xl border border-indigo-200 cursor-pointer hover:shadow-md">
+          <span class="text-2xl">🚏</span><p class="font-medium text-indigo-700 text-sm mt-1">All Stations</p>
+        </div>
+      </div>
+
+      <div id="result" class="min-h-[150px] border-t border-gray-200 pt-6 relative">
+        <p class="text-gray-500 italic text-sm">Results will appear here...</p>
+        <button id="fullscreen-map-btn" class="hidden absolute top-8 right-6 bg-indigo-500 text-white p-2 rounded-full shadow-lg hover:bg-indigo-600" title="View Map Fullscreen">⛶</button>
+      </div>
+    </main>
+  </div>
+
+  <!-- Modals (Track / Fare / Admin / Map Fullscreen) -->
+  <div id="track-modal" class="modal"><div class="modal-content"><span class="close-btn">&times;</span>
+    <h2 class="text-xl font-bold mb-4 text-indigo-600">Track Live Bus Location</h2>
+    <input id="track-input" type="text" placeholder="Enter Bus Number (e.g., 101)" class="w-full p-3 border rounded-lg mb-4 focus:ring-2 focus:ring-indigo-300"/>
+    <button id="track-submit" class="w-full bg-indigo-600 text-white font-semibold px-4 py-3 rounded-lg hover:bg-indigo-700">Track Bus</button>
+  </div></div>
+
+  <div id="fare-modal" class="modal"><div class="modal-content"><span class="close-btn">&times;</span>
+    <h2 class="text-xl font-bold mb-4 text-indigo-600">Calculate Fare</h2>
+    <input id="fare-src" type="text" placeholder="Source Station" class="w-full p-3 border rounded-lg mb-3 focus:ring-2 focus:ring-indigo-300"/>
+    <input id="fare-dest" type="text" placeholder="Destination Station" class="w-full p-3 border rounded-lg mb-4 focus:ring-2 focus:ring-indigo-300"/>
+    <button id="fare-submit" class="w-full bg-indigo-600 text-white font-semibold px-4 py-3 rounded-lg hover:bg-indigo-700">Calculate</button>
+  </div></div>
+
+  <div id="admin-modal" class="modal"><div class="modal-content"><span class="close-btn">&times;</span>
+    <h2 class="text-xl font-bold mb-4 text-red-600">Admin Login</h2>
+    <input id="admin-pass" type="password" placeholder="Enter Password" class="w-full p-3 border rounded-lg mb-4 focus:ring-2 focus:ring-red-300"/>
+    <button id="admin-login" class="w-full bg-red-600 text-white font-semibold px-4 py-3 rounded-lg hover:bg-red-700">Login</button>
+  </div></div>
+
+  <!-- Admin Panel -->
+  <div id="admin-panel" class="admin-panel">
+    <div class="flex justify-between items-center mb-6 border-b pb-3 sticky top-0 bg-white z-10">
+      <h2 class="text-2xl font-bold text-gray-800">🛠️ Admin Panel (CRUD)</h2>
+      <button class="admin-close-btn text-gray-500 hover:text-gray-800 text-2xl">&times;</button>
+    </div>
+
+    <p id="admin-status-msg" class="text-sm italic mb-4 text-blue-600 font-medium"></p>
+
+    <!-- View Buttons -->
+    <div class="mb-6 border border-gray-200 rounded-xl p-4 bg-white shadow-sm">
+      <h3 class="font-bold text-xl mb-3 text-indigo-600 border-b pb-2">View Records</h3>
+      <div class="grid grid-cols-2 gap-3 text-sm">
+        <button id="view-stations-btn" class="py-2 border rounded-lg bg-white hover:bg-gray-100">View Stations</button>
+        <button id="view-buses-btn" class="py-2 border rounded-lg bg-white hover:bg-gray-100">View Buses</button>
+        <button id="view-schedules-btn" class="py-2 border rounded-lg bg-white hover:bg-gray-100">View Schedules</button>
+        <button id="view-fares-btn" class="py-2 border rounded-lg bg-white hover:bg-gray-100">View Fares</button>
+      </div>
+    </div>
+
+    <div id="admin-data-view" class="mb-8 p-3 border border-gray-300 rounded-xl bg-gray-50 shadow-inner overflow-x-auto">
+      <p class="text-sm text-gray-400 italic">Select a view option above to populate data.</p>
+    </div>
+
+    <h3 class="font-bold text-xl mb-4 border-b pb-2 text-indigo-600">Manage Records</h3>
+
+    <!-- STATIONS -->
+    <div class="border border-gray-200 rounded-xl p-4 mb-6 bg-white shadow-sm">
+      <h4 class="font-semibold text-lg mb-3 text-gray-700">Stations</h4>
+      <input id="sta-id" placeholder="Station ID" class="w-full p-3 border rounded-lg mb-2 focus:ring-2 focus:ring-indigo-300"/>
+      <input id="sta-name" placeholder="Station Name" class="w-full p-3 border rounded-lg mb-2 focus:ring-2 focus:ring-indigo-300"/>
+      <input id="sta-lat" placeholder="Latitude" class="w-full p-3 border rounded-lg mb-2 focus:ring-2 focus:ring-indigo-300"/>
+      <input id="sta-lon" placeholder="Longitude" class="w-full p-3 border rounded-lg mb-3 focus:ring-2 focus:ring-indigo-300"/>
+      <button id="add-sta" class="w-full bg-indigo-600 text-white py-3 rounded-lg hover:bg-indigo-700">Add/Update Station</button>
+    </div>
+
+    <!-- BUSES -->
+    <div class="border border-gray-200 rounded-xl p-4 mb-6 bg-white shadow-sm">
+      <h4 class="font-semibold text-lg mb-3 text-gray-700">Buses</h4>
+      <input id="bus-id" placeholder="Route No" class="w-full p-3 border rounded-lg mb-2 focus:ring-2 focus:ring-indigo-300"/>
+      <input id="bus-license" placeholder="License Plate" class="w-full p-3 border rounded-lg mb-2 focus:ring-2 focus:ring-indigo-300"/>
+      <input id="bus-lat" placeholder="Latitude" class="w-full p-3 border rounded-lg mb-2 focus:ring-2 focus:ring-indigo-300"/>
+      <input id="bus-lon" placeholder="Longitude" class="w-full p-3 border rounded-lg mb-3 focus:ring-2 focus:ring-indigo-300"/>
+      <button id="add-bus" class="w-full bg-indigo-600 text-white py-3 rounded-lg hover:bg-indigo-700">Add/Update Bus</button>
+    </div>
+
+    <!-- SCHEDULES -->
+    <div class="border border-gray-200 rounded-xl p-4 mb-6 bg-white shadow-sm">
+      <h4 class="font-semibold text-lg mb-3 text-gray-700">Schedules</h4>
+      <input id="sch-bus-id" placeholder="Bus ID" class="w-full p-3 border rounded-lg mb-2 focus:ring-2 focus:ring-indigo-300"/>
+      <input id="sch-src" placeholder="Source Station ID" class="w-full p-3 border rounded-lg mb-2 focus:ring-2 focus:ring-indigo-300"/>
+      <input id="sch-dest" placeholder="Destination Station ID" class="w-full p-3 border rounded-lg mb-2 focus:ring-2 focus:ring-indigo-300"/>
+      <input id="sch-dep" placeholder="Departure (HH:MM)" class="w-full p-3 border rounded-lg mb-2 focus:ring-2 focus:ring-indigo-300"/>
+      <input id="sch-arr" placeholder="Arrival (HH:MM)" class="w-full p-3 border rounded-lg mb-3 focus:ring-2 focus:ring-indigo-300"/>
+      <button id="add-sch" class="w-full bg-indigo-600 text-white py-3 rounded-lg hover:bg-indigo-700">Add/Update Schedule</button>
+    </div>
+
+    <!-- FARES -->
+    <div class="border border-gray-200 rounded-xl p-4 mb-10 bg-white shadow-sm">
+      <h4 class="font-semibold text-lg mb-3 text-gray-700">Fares</h4>
+      <input id="fare-admin-src" placeholder="Source" class="w-full p-3 border rounded-lg mb-2 focus:ring-2 focus:ring-indigo-300"/>
+      <input id="fare-admin-dest" placeholder="Destination" class="w-full p-3 border rounded-lg mb-2 focus:ring-2 focus:ring-indigo-300"/>
+      <input id="fare-admin-amount" placeholder="Amount" class="w-full p-3 border rounded-lg mb-3 focus:ring-2 focus:ring-indigo-300"/>
+      <button id="add-fare" class="w-full bg-indigo-600 text-white py-3 rounded-lg hover:bg-indigo-700">Add/Update Fare</button>
+    </div>
+  </div>
+
+  <script src="static/app.js"></script>
+</body>
+</html>
